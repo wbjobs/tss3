@@ -72,6 +72,46 @@
             z-index: 1000;
             display: none;
         }
+        #performance {
+            position: fixed;
+            top: 120px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 12px 15px;
+            border-radius: 8px;
+            font-size: 11px;
+            z-index: 100;
+            pointer-events: none;
+            min-width: 200px;
+            font-family: 'Consolas', 'Monaco', monospace;
+        }
+        .perf-title {
+            font-weight: bold;
+            color: #ff9800;
+            margin-bottom: 6px;
+            font-size: 12px;
+            border-bottom: 1px solid rgba(255, 152, 0, 0.3);
+            padding-bottom: 3px;
+        }
+        .perf-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 2px 0;
+            opacity: 0.9;
+        }
+        .perf-row.total {
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+            margin-top: 4px;
+            padding-top: 4px;
+            font-weight: bold;
+            color: #4fc3f7;
+        }
+        #computeTimings {
+            margin-bottom: 10px;
+        }
+        #memoryUsage {
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
@@ -89,6 +129,16 @@
         <span>R键: 重置模拟</span>
     </div>
     <div id="error"></div>
+    <div id="performance">
+        <div id="computeTimings">
+            <div class="perf-title">Compute Shader 耗时</div>
+            <div class="perf-row"><span>等待数据...</span><span>--</span></div>
+        </div>
+        <div id="memoryUsage">
+            <div class="perf-title">GPU 内存占用</div>
+            <div class="perf-row"><span>等待数据...</span><span>--</span></div>
+        </div>
+    </div>
 
     <script type="module" src="/src/main.js"></script>
 </body>

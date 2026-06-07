@@ -23,21 +23,29 @@ struct Params {
     mouseMode: u32,
     gridResolution: u32,
     maxParticles: u32,
+    heightfieldResolution: u32,
+    erosionStrength: f32,
+    depositionStrength: f32,
+    splashStrength: f32,
+    rotationSpeed: f32,
     _pad1: u32
 };
 
 struct Obstacle {
     position: vec2<f32>,
-    radius: f32
+    radius: f32,
+    rotation: f32,
+    angularVelocity: f32
 };
 
 @group(0) @binding(0) var<storage, read_write> particles: array<Particle>;
 @group(0) @binding(1) var<storage, read_write> gridIndices: array<u32>;
 @group(0) @binding(2) var<storage, read_write> gridOffsets: array<i32>;
 @group(0) @binding(3) var<uniform> params: Params;
-@group(0) @binding(4) var<storage, read> obstacles: array<Obstacle>;
+@group(0) @binding(4) var<storage, read_write> obstacles: array<Obstacle>;
 @group(0) @binding(5) var<storage, read_write> gridCounts: array<atomic<u32>>;
 @group(0) @binding(6) var<storage, read_write> gridIndicesTemp: array<u32>;
+@group(0) @binding(7) var<storage, read_write> heightfield: array<f32>;
 
 const PI: f32 = 3.14159265359;
 const WORKGROUP_SIZE: u32 = 256u;
@@ -149,7 +157,7 @@ fn getGridEnd(gridIdx: u32) -> u32 {
     return u32(offset) + count;
 }
 
-fn checkObstacleBoundary(pos: vec2<f32>) -> vec2<f32> {
+fn checkObstacleBoundary(pos: vec2<f32>, vel: vec2<f32>) -> vec2<f32> {
     var boundaryForce: vec2<f32> = vec2<f32>(0.0);
     
     for (var o: u32 = 0u; o < 64u; o = o + 1u) {
@@ -165,7 +173,20 @@ fn checkObstacleBoundary(pos: vec2<f32>) -> vec2<f32> {
             let dist: f32 = sqrt(distSq);
             let penetration: f32 = influenceRadius - dist;
             let normal: vec2<f32> = diff / dist;
+            let tangent: vec2<f32> = vec2<f32>(-normal.y, normal.x);
+            
             boundaryForce += normal * penetration * penetration * 1000.0;
+            
+            let surfaceVelocity: vec2<f32> = tangent * obs.angularVelocity * obs.radius;
+            let velRelative: vec2<f32> = vel - surfaceVelocity;
+            let velAlongNormal: f32 = dot(velRelative, normal);
+            
+            if (velAlongNormal < 0.0) {
+                boundaryForce += normal * (-velAlongNormal) * 50.0;
+            }
+            
+            let velAlongTangent: f32 = dot(velRelative, tangent);
+            boundaryForce += tangent * (-velAlongTangent) * 20.0;
         }
     }
     
@@ -335,7 +356,7 @@ fn computeForces(@builtin(global_invocation_id) gid: vec3<u32>,
         }
     }
     
-    let obstacleForce: vec2<f32> = checkObstacleBoundary(pos);
+    let obstacleForce: vec2<f32> = checkObstacleBoundary(pos, pi.velocity);
     
     var gravity: vec2<f32> = vec2<f32>(0.0, params.gravity);
     var acceleration: vec2<f32> = pressureForce + viscosityForce + gravity + obstacleForce;
@@ -398,14 +419,42 @@ fn integrate(@builtin(global_invocation_id) gid: vec3<u32>) {
             let dir: vec2<f32> = diff / dist;
             p.position = obs.position + dir * minDist;
             
+            let tangent: vec2<f32> = vec2<f32>(-dir.y, dir.x);
+            let surfaceVelocity: vec2<f32> = tangent * obs.angularVelocity * obs.radius;
+            
             let velAlongNormal: f32 = dot(p.velocity, dir);
+            let impactSpeed: f32 = abs(velAlongNormal);
+            
             if (velAlongNormal < 0.0) {
                 p.velocity = p.velocity - 2.0 * velAlongNormal * dir * 0.8;
             }
             
-            let tangent: vec2<f32> = vec2<f32>(-dir.y, dir.x);
+            p.velocity = p.velocity + surfaceVelocity * 0.5;
+            
             let velAlongTangent: f32 = dot(p.velocity, tangent);
             p.velocity = p.velocity - tangent * velAlongTangent * 0.3;
+            
+            if (impactSpeed > 3.0 && params.particleCount < params.maxParticles) {
+                let splashCount: u32 = u32(min(impactSpeed * 0.5, 5.0));
+                for (var s: u32 = 0u; s < splashCount; s++) {
+                    let newIdx: u32 = params.particleCount + s;
+                    if (newIdx >= params.maxParticles) { break; }
+                    
+                    var splashP: Particle = particles[newIdx];
+                    if (splashP.density < 0.0) {
+                        let angle: f32 = f32(s) * PI * 2.0 / f32(splashCount) + obs.rotation;
+                        let splashDir: vec2<f32> = vec2<f32>(cos(angle), sin(angle));
+                        let splashSpeed: f32 = impactSpeed * params.splashStrength * 0.3;
+                        
+                        splashP.position = p.position + splashDir * 0.02;
+                        splashP.velocity = splashDir * splashSpeed + vec2<f32>(0.0, 2.0);
+                        splashP.density = 0.0;
+                        splashP.pressure = 0.0;
+                        splashP.color = vec3<f32>(0.8, 0.9, 1.0);
+                        particles[newIdx] = splashP;
+                    }
+                }
+            }
         }
     }
     
@@ -439,6 +488,91 @@ fn addParticles(@builtin(global_invocation_id) gid: vec3<u32>) {
             p.pressure = 0.0;
             p.color = vec3<f32>(0.2, 0.5, 1.0);
             particles[i] = p;
+        }
+    }
+}
+
+@compute @workgroup_size(64)
+fn updateObstacles(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i: u32 = gid.x;
+    if (i >= 64u) { return; }
+    
+    var obs: Obstacle = obstacles[i];
+    if (obs.radius <= 0.0) { return; }
+    
+    obs.rotation = obs.rotation + obs.angularVelocity * params.dt;
+    obstacles[i] = obs;
+}
+
+fn getHeightfieldIndex(pos: vec2<f32>) -> u32 {
+    let res: u32 = params.heightfieldResolution;
+    let x: u32 = clamp(u32(floor(pos.x * f32(res))), 0u, res - 1u);
+    let y: u32 = clamp(u32(floor(pos.y * f32(res))), 0u, res - 1u);
+    return y * res + x;
+}
+
+fn sampleHeightfield(pos: vec2<f32>) -> f32 {
+    let idx: u32 = getHeightfieldIndex(pos);
+    return heightfield[idx];
+}
+
+@compute @workgroup_size(256)
+fn erodeHeightfield(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i: u32 = gid.x;
+    if (i >= params.particleCount) { return; }
+    
+    var p: Particle = particles[i];
+    
+    let speed: f32 = length(p.velocity);
+    if (speed < 0.5) { return; }
+    
+    let pos: vec2<f32> = p.position;
+    let res: u32 = params.heightfieldResolution;
+    
+    let cellX: f32 = pos.x * f32(res);
+    let cellY: f32 = pos.y * f32(res);
+    let baseX: u32 = u32(floor(cellX));
+    let baseY: u32 = u32(floor(cellY));
+    
+    let fx: f32 = fract(cellX);
+    let fy: f32 = fract(cellY);
+    
+    let kernelRadius: u32 = 2u;
+    let erosionFactor: f32 = params.erosionStrength * speed * params.dt;
+    let depositionFactor: f32 = params.depositionStrength * params.dt;
+    
+    for (var dy: u32 = 0u; dy <= kernelRadius * 2u; dy++) {
+        for (var dx: u32 = 0u; dx <= kernelRadius * 2u; dx++) {
+            let x: u32 = baseX + dx - kernelRadius;
+            let y: u32 = baseY + dy - kernelRadius;
+            
+            if (x >= res || y >= res) { continue; }
+            
+            let distX: f32 = f32(dx) - fx - f32(kernelRadius);
+            let distY: f32 = f32(dy) - fy - f32(kernelRadius);
+            let distSq: f32 = distX * distX + distY * distY;
+            let kernelRadiusSq: f32 = f32(kernelRadius * kernelRadius);
+            
+            if (distSq < kernelRadiusSq) {
+                let weight: f32 = 1.0 - sqrt(distSq) / f32(kernelRadius);
+                let idx: u32 = y * res + x;
+                
+                var currentHeight: f32 = heightfield[idx];
+                let normal: vec2<f32> = normalize(p.velocity);
+                
+                let heightAhead: f32 = sampleHeightfield(pos + normal * 0.01);
+                let heightBehind: f32 = sampleHeightfield(pos - normal * 0.01);
+                let slope: f32 = (heightAhead - heightBehind) / 0.02;
+                
+                if (slope < -0.1) {
+                    currentHeight -= erosionFactor * weight * abs(slope);
+                } else {
+                    currentHeight += depositionFactor * weight;
+                }
+                
+                currentHeight = clamp(currentHeight, 0.0, 0.5);
+                heightfield[idx] = currentHeight;
+            }
         }
     }
 }
