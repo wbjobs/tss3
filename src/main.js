@@ -3,9 +3,9 @@ import sphComputeShader from './shaders/sph_compute.wgsl?raw';
 import particleRenderShader from './shaders/particle_render.wgsl?raw';
 import obstacleRenderShader from './shaders/obstacle_render.wgsl?raw';
 
-const MAX_PARTICLES = 8192;
-const INITIAL_PARTICLES = 5000;
-const GRID_RESOLUTION = 32;
+const MAX_PARTICLES = 32768;
+const INITIAL_PARTICLES = 20000;
+const GRID_RESOLUTION = 64;
 const MAX_OBSTACLES = 64;
 
 const params = {
@@ -206,7 +206,7 @@ function updateParamsBuffer() {
     view.setUint32(56, state.mouseActive ? 1 : 0, true);
     view.setUint32(60, state.mouseMode, true);
     view.setUint32(64, GRID_RESOLUTION, true);
-    view.setUint32(68, 0, true);
+    view.setUint32(68, MAX_PARTICLES, true);
     view.setUint32(72, 0, true);
     
     device.queue.writeBuffer(state.paramsBuffer, 0, data);
@@ -280,7 +280,7 @@ async function createComputePipelines() {
         bindGroupLayouts: [bindGroupLayout]
     });
     
-    const entryPoints = ['buildGrid', 'clearGrid', 'countGridCells', 'buildGridOffsets', 'reorderParticles', 'clearGridCounts', 'computeDensityPressure', 'computeForces', 'integrate', 'addParticles'];
+    const entryPoints = ['clearGrid', 'countGridCells', 'buildGridOffsets', 'reorderParticles', 'clearGridCounts', 'computeDensityPressure', 'computeForces', 'integrate', 'addParticles'];
     
     for (const entry of entryPoints) {
         state.computePipelines[entry] = device.createComputePipeline({
