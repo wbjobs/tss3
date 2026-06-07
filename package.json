@@ -1,0 +1,17 @@
+{
+  "name": "webgpu-sph-2.5d",
+  "version": "1.0.0",
+  "description": "2.5D SPH Fluid Simulation with WebGPU",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "lil-gui": "^0.19.1"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebGPU 2.5D SPH Fluid Simulation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0a0a0f;
+            overflow: hidden;
+            color: #fff;
+        }
+        #canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        #info {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 100;
+            pointer-events: none;
+        }
+        #info h3 {
+            margin-bottom: 5px;
+            color: #4fc3f7;
+        }
+        #info p {
+            margin: 3px 0;
+            opacity: 0.9;
+        }
+        #controls {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 12px;
+            z-index: 100;
+            pointer-events: none;
+        }
+        #controls span {
+            display: inline-block;
+            padding: 2px 8px;
+            margin: 2px;
+            background: rgba(79, 195, 247, 0.3);
+            border-radius: 4px;
+        }
+        #error {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #d32f2f;
+            color: white;
+            padding: 20px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            text-align: center;
+            z-index: 1000;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="info">
+        <h3>WebGPU 2.5D SPH 流体模拟</h3>
+        <p>粒子数: <span id="particleCount">0</span></p>
+        <p>FPS: <span id="fps">0</span></p>
+        <p>模式: <span id="mode">添加粒子</span></p>
+    </div>
+    <div id="controls">
+        <span>左键拖拽: 添加粒子</span>
+        <span>右键拖拽: 添加障碍物</span>
+        <span>空格键: 清除障碍物</span>
+        <span>R键: 重置模拟</span>
+    </div>
+    <div id="error"></div>
+
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html>
